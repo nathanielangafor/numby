@@ -9,6 +9,10 @@ import os
 import pathlib
 import sys
 import time
+import fcntl
+import contextlib
+import secrets
+import tempfile
 import urllib.error
 import urllib.request
 
@@ -16,12 +20,97 @@ BASE = 'https://numby.io'
 
 
 def save(path, value):
-    temp = path.with_suffix('.tmp')
-    fd = os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    os.chmod(temp, 0o600)
-    with os.fdopen(fd, 'w') as f:
-        json.dump(value, f)
-    os.replace(temp, path)
+    fd, name = tempfile.mkstemp(dir=path.parent, prefix='.numby-')
+    try:
+        with os.fdopen(fd, 'w') as f:
+            json.dump(value, f)
+        os.replace(name, path)
+    finally:
+        pathlib.Path(name).unlink(missing_ok=True)
+
+
+def job_path(d, message_id):
+    return d / (hashlib.sha256(message_id.encode()).hexdigest() + '.json')
+
+
+@contextlib.contextmanager
+def dispatch_lock(d):
+    ledger = d / 'dispatch'
+    ledger.mkdir(mode=0o700, exist_ok=True)
+    fd = os.open(ledger / '.lock', os.O_CREAT | os.O_RDWR, 0o600)
+    with os.fdopen(fd, 'w') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        yield ledger
+
+
+def read_state(path):
+    return json.loads(path.read_text()) if path.exists() else {}
+
+
+def dispatch(d, now=None):
+    """Retry unaccepted wakes; never infer worker death from elapsed time."""
+    now = time.time() if now is None else now
+    items, attention = [], []
+    with dispatch_lock(d) as ledger:
+        for file in sorted(d.glob('*.json')):
+            if len(file.stem) != 64 or any(c not in '0123456789abcdef' for c in file.stem):
+                continue
+            job = json.loads(file.read_text())
+            if file != job_path(d, job['id']):
+                raise ValueError('Job identity mismatch')
+            path = ledger / file.name
+            state = read_state(path)
+            phase = state.get('phase', 'pending')
+            if phase == 'accepted':
+                file.unlink(missing_ok=True)
+                continue
+            if phase in ('working', 'hold'):
+                # A new server lease does NOT revoke a local worker or approval hold.
+                if phase == 'working' and now - state['updated'] >= 120 and not state.get('alerted'):
+                    attention.append({'id': job['id'], 'reason': 'worker_unfinished', 'reportOnly': True})
+                    state['alerted'] = True
+                    save(path, state)
+                continue
+            if state.get('lease') != job['lease']:
+                state = {'phase': 'pending', 'lease': job['lease'], 'attempts': 0, 'next': 0}
+            if now < state.get('next', 0):
+                continue
+            attempts = state.get('attempts', 0)
+            if attempts >= 3:
+                if not state.get('alerted'):
+                    attention.append({'id': job['id'], 'reason': 'wake_unaccepted', 'reportOnly': True})
+                    state['alerted'] = True
+                    save(path, state)
+                continue
+            items.append(job)
+            state.update(attempts=attempts + 1, next=now + (30, 60, 120)[attempts], updated=now)
+            save(path, state)
+        # Keep receipts long enough to suppress delayed delivery, without unbounded growth.
+        for path in ledger.glob('*.json'):
+            state = read_state(path)
+            if state.get('phase') == 'accepted' and now - state['updated'] > 86400 and not (d / path.name).exists():
+                path.unlink()
+    return {'items': items, 'attention': attention}
+
+
+def worker_start(d, message_id, now=None):
+    with dispatch_lock(d) as ledger:
+        file = job_path(d, message_id)
+        job = json.loads(file.read_text())
+        state = read_state(ledger / file.name)
+        if state.get('phase') in ('working', 'hold', 'accepted'):
+            raise ValueError('Job already owned, held or completed; do not act')
+        owner = secrets.token_hex(16)
+        save(ledger / file.name, {'phase': 'working', 'owner': owner, 'lease': job['lease'],
+                                 'updated': time.time() if now is None else now})
+        return owner
+
+
+def check_worker(d, message_id, owner):
+    state = read_state(d / 'dispatch' / job_path(d, message_id).name)
+    if state and (state.get('phase') != 'working' or not owner or state.get('owner') != owner):
+        raise ValueError('Use worker-start once and the returned --worker token; held jobs cannot act')
+    return state
 
 
 def request(path, data=None, credential=None):
@@ -41,7 +130,8 @@ def api(path, data=None, credential=None):
 def main():
     p = argparse.ArgumentParser()
     p.add_argument('command', choices=['bootstrap', 'start', 'status', 'claim', 'cancel',
-                                      'disconnect', 'listen', 'send', 'reply', 'react', 'ack', 'send-content', 'reply-content', 'download', 'typing'])
+                                      'disconnect', 'listen', 'send', 'reply', 'react', 'ack', 'send-content', 'reply-content', 'download', 'typing',
+                                      'dispatch', 'worker-start', 'worker-hold', 'worker-resume', 'worker-progress'])
     p.add_argument('--dir', default=os.environ.get('NUMBY_DIR', './numby'))
     p.add_argument('--poll', action='store_true', help='Use immediate-delivery HTTPS long polling for runtimes that buffer SSE')
     p.add_argument('--purpose', choices=['connect', 'disconnect'], default='connect')
@@ -50,6 +140,7 @@ def main():
     p.add_argument('--replace', action='store_true')
     p.add_argument('--confirmed', action='store_true')
     p.add_argument('--id')
+    p.add_argument('--worker', help='Private ownership token returned by worker-start')
     p.add_argument('--text-file')
     p.add_argument('--emoji')
     p.add_argument('--file', action='append', default=[], help='Local file; repeat for multiple attachments')
@@ -73,7 +164,26 @@ def main():
         # The ownership challenge is intended for the user; credentials never are.
         print(json.dumps(result))
 
-    if a.command == 'bootstrap':
+    if a.command == 'dispatch':
+        print(json.dumps(dispatch(d)))
+    elif a.command == 'worker-start':
+        if not a.id: p.error('worker-start requires --id')
+        print(json.dumps({'worker': worker_start(d, a.id)}))
+    elif a.command in ('worker-hold', 'worker-resume', 'worker-progress'):
+        if not a.id or not a.worker: p.error('worker operation requires --id and --worker')
+        with dispatch_lock(d) as ledger:
+            path = ledger / job_path(d, a.id).name
+            state = read_state(path)
+            if state.get('owner') != a.worker or state.get('phase') not in ('working', 'hold'):
+                p.error('Worker does not own this pending job')
+            if a.command == 'worker-resume' and not a.confirmed:
+                p.error('worker-resume requires --confirmed after the required approval is received')
+            if a.command == 'worker-hold': state['phase'] = 'hold'
+            elif a.command == 'worker-resume': state['phase'] = 'working'
+            state['updated'] = time.time()
+            save(path, state)
+        print('Worker state recorded.')
+    elif a.command == 'bootstrap':
         if setup_file.exists():
             p.error('A setup is already saved. Use status or cancel before starting again.')
         result = api('/api/setup/bootstrap', {'purpose': a.purpose})
@@ -115,11 +225,15 @@ def main():
         for file in d.glob('*.json'):
             if len(file.stem) == 64 and all(c in '0123456789abcdef' for c in file.stem):
                 file.unlink()
+        with dispatch_lock(d) as ledger:
+            for file in ledger.glob('*.json'): file.unlink()
         print('Disconnected. Stop the listener and unregister its hook. An already sending message cannot be recalled.')
     elif a.command in ('send', 'reply', 'react', 'ack', 'send-content', 'reply-content', 'download', 'typing'):
         if not a.id or (a.command in ('send', 'reply') and not a.text_file) or (a.command == 'react' and not a.emoji):
             p.error('message operation requires --id, text operations need --text-file, react needs --emoji')
         file = d / (hashlib.sha256(a.id.encode()).hexdigest() + '.json')
+        with dispatch_lock(d):
+            check_worker(d, a.id, a.worker)
         job = json.loads(file.read_text())
         payload = {'id': job['id'], 'lease': job['lease']}
         if a.command in ('send', 'reply'):
@@ -163,8 +277,14 @@ def main():
         if a.command == 'typing':
             print('Typing indicator updated.')
             return
-        file.unlink(missing_ok=True)
-        print('Operation accepted:', result['state'])
+        if result.get('state') not in ('outbound', 'sending', 'sent', 'uncertain'):
+            raise ValueError('Unexpected server receipt; job retained')
+        with dispatch_lock(d) as ledger:
+            save(ledger / file.name, {'phase': 'accepted', 'operation': a.command,
+                                     'state': result['state'], 'updated': time.time()})
+            file.unlink(missing_ok=True)
+        print(json.dumps({'operation': a.command, 'state': result['state'], 'localJobRemoved': True,
+                          'providerConfirmed': result['state'] == 'sent' and a.command != 'ack'}))
     else:
         secret = agent_token()
         backoff = 1

@@ -81,3 +81,10 @@ test("SDK normalization forwards text, nested reply and added reaction without t
     null,
   );
 });
+
+test("delivery diagnostics classify failures without leaking provider strings", async () => {
+  const { deliveryFailure } = await import('../src/provider.js');
+  assert.deepEqual(deliveryFailure({message:'token=secret phone=+12405550101',code:7}), {reason:'provider_error',grpcCode:7});
+  assert.deepEqual(deliveryFailure({message:'Send outcome unknown'}),{reason:'timeout'});
+  assert.deepEqual(deliveryFailure({message:'secret',code:'secret'}),{reason:'provider_error'});
+});

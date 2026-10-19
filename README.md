@@ -50,3 +50,22 @@ Use GitHub issues for reproducible, non-sensitive bugs. Never include phone numb
 MIT; see [LICENSE](LICENSE). Third-party dependencies retain their own licenses. The license does not grant rights to third-party trademarks or imply affiliation with Photon or agent runtime providers.
 
 Media deployment: proxy `/skill.md` to the backend alongside `/api/`, `/connector/`, and `/agent-guide.txt`. Allow a 15 MiB request body for base64 media uploads; the application authenticates media requests and limits decoded bytes to 10 MiB. Disable request-body buffering if the proxy would otherwise spool private uploads to disk. Other API bodies remain limited to 64 KiB by the application.
+
+## Worker delivery reliability
+
+Install the current connector, hook and [skill](https://numby.io/skill.md) together.
+The hook calls `dispatch`; workers must call `worker-start` before acting and
+pass the returned ownership token to message operations. Atomic POSIX file locks
+prevent concurrent claims. Unaccepted wakes retry with bounds; claimed work and
+approval holds are never replayed based on time alone. Stalled work produces a
+report-only attention event. Completion requires a real command receipt, not a
+worker's prose. Receipts suppress delayed duplicate events and are retained for
+24 hours after completion. Private job/claim files must not be edited manually.
+
+Existing agents need the upgrade steps in the guide; the server cannot update
+remote agent installations automatically. Provider uncertainty stays held for
+review; no automatic threaded-to-plain fallback can safely guarantee no duplicate.
+Safe server diagnostics record operation, duration, failure category and numeric
+gRPC code when available, never provider error text or message bodies.
+
+Regression checks: `python3 -m unittest discover -s test -p '*_test.py'` and `npm test`.

@@ -18,27 +18,35 @@ For installation or reconnection, read https://numby.io/agent-guide.txt. The aud
 - Send audio as a voice note when requested or useful; the gateway transfers existing audio and does not synthesize or transcribe it. Videos, images, PDFs and other documents use ordinary attachments. URLs can be included in text; recipient preview behavior varies.
 - Use a typing indicator only while actively preparing a reply. It is optional and does not complete the event or make the model faster. Stop it before submitting the terminal operation, or on error; never use it as proof of progress.
 
+## Claim work before acting
+
+For every wake item, FIRST run `python3 BRIDGE worker-start --dir STATE --id MESSAGE_ID` and keep the returned private `worker` value as WORKER. If it fails because another worker owns the job, stop: do not answer, perform tools, or bypass the claim. Pass `--worker WORKER` to every message operation. The connector owns claims and receipts; do not edit its dispatch files or remove jobs manually.
+
+Unaccepted wakes retry after 30 and 60 seconds, then surface an attention event. A claimed worker is never replaced merely because time passed, even when the server re-leases the event. `attention` entries are report-only: surface the problem to the owner/operator, never replay tools or send the message again. A stale claim requires explicit operator investigation; elapsed time is not proof the worker died.
+
+For long tasks, record actual progress with `python3 BRIDGE worker-progress --dir STATE --id MESSAGE_ID --worker WORKER`. If required approval blocks work, run `worker-hold` with those arguments and surface the approval request in the host. Holds do not expire. Only after receiving that approval, use `worker-resume` with the same arguments plus `--confirmed`. Never substitute an acknowledgment for an approval hold.
+
 ## Commands
 
 Every operation refers to a local leased event's `MESSAGE_ID`. The connector retrieves its private lease and trusted recipient; do not supply recipients or provider IDs yourself.
 
 ```sh
-python3 BRIDGE send --dir STATE --id MESSAGE_ID --text-file REPLY_FILE
-python3 BRIDGE reply --dir STATE --id MESSAGE_ID --text-file REPLY_FILE
-python3 BRIDGE react --dir STATE --id MESSAGE_ID --emoji '👍'
-python3 BRIDGE ack --dir STATE --id MESSAGE_ID
+python3 BRIDGE send --dir STATE --id MESSAGE_ID --worker WORKER --text-file REPLY_FILE
+python3 BRIDGE reply --dir STATE --id MESSAGE_ID --worker WORKER --text-file REPLY_FILE
+python3 BRIDGE react --dir STATE --id MESSAGE_ID --worker WORKER --emoji '👍'
+python3 BRIDGE ack --dir STATE --id MESSAGE_ID --worker WORKER
 
 # Photo, video, PDF or other local file; optional caption and multiple files
-python3 BRIDGE send-content --dir STATE --id MESSAGE_ID --text-file CAPTION_FILE --file PHOTO_FILE
-python3 BRIDGE reply-content --dir STATE --id MESSAGE_ID --file DOCUMENT_FILE
+python3 BRIDGE send-content --dir STATE --id MESSAGE_ID --worker WORKER --text-file CAPTION_FILE --file PHOTO_FILE
+python3 BRIDGE reply-content --dir STATE --id MESSAGE_ID --worker WORKER --file DOCUMENT_FILE
 
 # Existing audio as a voice note; --mime-type is optional for unusual extensions
-python3 BRIDGE send-content --dir STATE --id MESSAGE_ID --file AUDIO_FILE --voice
+python3 BRIDGE send-content --dir STATE --id MESSAGE_ID --worker WORKER --file AUDIO_FILE --voice
 
 # Download incoming attachment/voice bytes to a NEW private file
-python3 BRIDGE download --dir STATE --id MESSAGE_ID --output NEW_LOCAL_FILE
-python3 BRIDGE typing --dir STATE --id MESSAGE_ID --active true
-python3 BRIDGE typing --dir STATE --id MESSAGE_ID --active false
+python3 BRIDGE download --dir STATE --id MESSAGE_ID --worker WORKER --output NEW_LOCAL_FILE
+python3 BRIDGE typing --dir STATE --id MESSAGE_ID --worker WORKER --active true
+python3 BRIDGE typing --dir STATE --id MESSAGE_ID --worker WORKER --active false
 ```
 
 Use UTF-8 mode-0600 text files; delete temporary reply files after acceptance. `--file` is repeatable. Content operations accept 1–8 parts and at most 10 MiB total file bytes. Filename and MIME type are inferred; `--mime-type` overrides one file. Media is uploaded privately through Numby and Photon, not published at a public URL. A filename alone does not send its contents.
@@ -47,7 +55,7 @@ An incoming `attachment` or `voice` event includes metadata in `attachment`. Dow
 
 ## Finish once; keep silence distinct from failure
 
-Choose one terminal operation per event: `send`, `reply`, `react`, `ack`, `send-content`, or `reply-content`. Typing and downloading are nonterminal. The connector removes the local job only after an accepted terminal operation.
+Choose one terminal operation per event: `send`, `reply`, `react`, `ack`, `send-content`, or `reply-content`. Typing and downloading are nonterminal. The connector writes a durable receipt and removes the local job only after an accepted terminal operation. Check the actual command exit and JSON receipt (`state`, `localJobRemoved`) before claiming completion. `outbound` is queued; `sent` is provider-confirmed, not a device receipt. `uncertain` requires operator attention. Worker prose is not a receipt.
 
 A multipart operation sends its parts sequentially. If part of a send fails, delivery can be uncertain; do not repeat the whole batch. Identical retries are idempotent; changing a previously accepted operation conflicts. A 202 means accepted for delivery, not confirmed on the person's device. Report provider uncertainty rather than claiming delivery.
 

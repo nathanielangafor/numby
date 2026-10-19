@@ -2,7 +2,7 @@ import { createServer } from "node:http";
 import { readFileSync, mkdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { Store, Failure, hash, phoneOK, verifyWebhook } from "./core.js";
-import { Photon } from "./provider.js";
+import { Photon, deliveryFailure } from "./provider.js";
 import { fileURLToPath } from "node:url";
 export function createApp({
   store,
@@ -39,6 +39,7 @@ export function createApp({
           )
           .run(Date.now(), j.id);
         if (!claimed.changes) continue;
+        const sendStarted = Date.now();
         try {
           await provider.send(
             store.open(j.payload),
@@ -50,13 +51,14 @@ export function createApp({
               "UPDATE jobs SET state='sent',payload=NULL,reply=NULL,updated=? WHERE id=?",
             )
             .run(Date.now(), j.id);
-          log("reply_sent", { id: j.id });
+          log("reply_sent", { id: j.id, operation: j.operation, elapsedMs: Date.now() - sendStarted });
           push(j.account_id);
-        } catch {
+        } catch (error) {
           store.db
             .prepare("UPDATE jobs SET state='uncertain',updated=? WHERE id=?")
             .run(Date.now(), j.id);
-          log("reply_outcome_uncertain", { id: j.id });
+          log("reply_outcome_uncertain", { id: j.id, operation: j.operation,
+            elapsedMs: Date.now() - sendStarted, ...deliveryFailure(error) });
         }
       }
     } finally {

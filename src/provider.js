@@ -1,6 +1,19 @@
 import { Spectrum, reply, reaction, text, attachment, voice, typing } from "spectrum-ts";
 import { imessage } from "spectrum-ts/providers/imessage";
 import { readBoundedAttachment } from "./media.js";
+// Whitelisted diagnostics only: provider messages may contain phone numbers or tokens.
+export function deliveryFailure(error) {
+  const reasons = new Map([
+    ["Send outcome unknown", "timeout"],
+    ["Provider unavailable", "provider_unavailable"],
+    ["Provider did not confirm the operation", "missing_confirmation"],
+    ["Provider did not confirm the content part", "missing_part_confirmation"],
+  ]);
+  return {
+    reason: reasons.get(error?.message) || "provider_error",
+    ...(Number.isInteger(error?.code) && error.code >= 0 && error.code <= 16 ? { grpcCode: error.code } : {}),
+  };
+}
 export class Photon {
   constructor(projectId, secret) {
     this.projectId = projectId;
