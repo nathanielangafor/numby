@@ -76,3 +76,11 @@ the provider outcome without resubmitting. `outbound` means Numby queued the
 operation; `sent` means provider-confirmed; device receipt remains unknown.
 Typed provider diagnostics persist per job and are tenant-scoped. No raw provider
 error messages, message content, or credentials are included in status responses.
+
+## Private operations dashboard
+
+`/dashboard` provides a read-only view of agent listeners, message outcomes, pending work, failures, activity, and p95 processing times. Set `DASHBOARD_PASSWORD` to a long random operator key and proxy `/dashboard` and `/dashboard/*` to the Node service over HTTPS. Leave it unset to disable access to dashboard data. Keep this key out of source control.
+
+Sessions use Secure, HttpOnly, SameSite=Strict cookies, expire after 12 hours, and are revoked on logout or server restart. Login is rate limited. This is a single-operator dashboard, not an account-scoped customer portal. It does not expose message contents, full phone numbers, agent tokens, or lease credentials.
+
+The activity window applies to incoming-message cohorts and their current outcomes. Pending and attention totals include all retained jobs; use the 30-day window to investigate older items. A provider-accepted reply is not proof of handset delivery. A connected listener is not proof that an agent is processing. Provider latency is available only for instrumented sends; turnaround uses incoming creation through the final stored update. No automatic retry or mutation controls are provided.

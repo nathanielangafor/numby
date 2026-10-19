@@ -4,11 +4,13 @@ import { join, resolve } from "node:path";
 import { Store, Failure, hash, phoneOK, verifyWebhook } from "./core.js";
 import { Photon, deliveryFailure } from "./provider.js";
 import { fileURLToPath } from "node:url";
+import { createDashboard } from "./dashboard.js";
 export function createApp({
   store,
   provider = null,
   origin = "https://numby.io",
   signingSecret = "",
+  dashboardPassword,
 }) {
   const streams = new Map();
   const polls = new Map();
@@ -119,10 +121,15 @@ export function createApp({
   };
   const starts = new Set();
   const root = resolve(import.meta.dirname, "../public");
+  const dashboard = createDashboard({store,origin,password:dashboardPassword,runtime:{
+    providerReady:()=>!!provider?.ready,
+    connected:id=>waiters.has(id)||!!streams.get(id)||Date.now()-(polls.get(id)||0)<15000,
+  }});
   const server = createServer(async (req, res) => {
     try {
       const url = new URL(req.url, origin),
         path = url.pathname;
+      if(await dashboard(req,res,url))return;
       if (req.method === "GET" && staticFiles[path]) {
         const file = staticFiles[path],
           type = file.endsWith(".css")
