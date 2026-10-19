@@ -1,4 +1,8 @@
-NUMBY AGENT-LED SETUP — https://numby.io/agent-guide.txt
+NUMBY AGENT-LED SETUP: https://numby.io/agent-guide.txt
+
+COMMUNITY
+Join Muse Agent, the unofficial Muse community: https://discord.gg/sxjhCPdEG6
+Keep phone numbers, pairing codes, tokens and private logs out of public channels.
 
 CONVERSATION SKILL
 Install and read https://numby.io/skill.md for message behavior and media commands.
@@ -26,7 +30,8 @@ Numby routes messages to an existing agent, not an AI model of its own.
 BEFORE COLLECTING A PHONE
 Explain briefly: "Numby connects a shared iMessage number to your phone, so you
 can text me from that verified phone. It isn't an exclusive number; this version
-supports direct texts, threaded replies and reactions, not groups. May I use your
+supports direct texts and media, not groups. Advanced messaging features depend
+on the provider and recipient. May I use your
 mobile number to set this up through Numby and its messaging provider Photon?"
 Request the owner's own phone with country code after they agree. Never infer
 permission from a phone mentioned elsewhere. Do not put phone numbers or secrets
@@ -266,6 +271,9 @@ CAPABILITY MATRIX (existing Photon Pro/shared pool; checked 2026-10-19)
   ignored. Text/emoji support can vary on SMS/RCS fallback and recipient devices.
 - Official quotas describe 5,000 messages/server/day and 50 newly initiated
   conversations/line/day; provider limits and delivery errors still apply.
+- Implementation of replies, reactions or typing is not proof that a particular
+  hosted connection supports them. Confirm outcomes; never claim success from a
+  queued receipt alone or automatically resend an uncertain operation.
 - A provider-accepted operation is not proof of receipt, render, or an AI response.
 Sources: https://photon.codes/docs/spectrum-ts/reactions-and-replies
 https://photon.codes/docs/spectrum-ts/providers/imessage/connection-and-routing
