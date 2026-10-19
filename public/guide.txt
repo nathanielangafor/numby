@@ -84,6 +84,11 @@ In the commands below STATE means its absolute path. Never publish its contents.
    python3 numby-bridge.py listen --dir STATE --poll
    This uses finite authenticated HTTPS requests about every 5 seconds with the
    same queue, tenant isolation and lease rules. Run only one delivery mode.
+   The supervised process must inherit the runtime's required HTTPS proxy and
+   trusted CA configuration, just like successful foreground setup requests.
+   Use the runtime's supported private environment mechanism; never print proxy
+   credentials or bypass its network controls. Verify agentConnected from the
+   running service, not merely that a process exists.
    Configure restart/backoff and survival across agent restarts. A short-lived
    terminal process alone is not a completed installation.
 7. Register the worker/hook below, then:
