@@ -1,3 +1,4 @@
+import { validateParts } from "./media.js";
 import { DatabaseSync } from "node:sqlite";
 import {
   randomBytes,
@@ -241,7 +242,7 @@ export class Store {
       !["imessage", "iMessage"].includes(space?.platform) ||
       space.type !== "dm" ||
       message.direction !== "inbound" ||
-      !["text", "reply", "reaction"].includes(message.content?.type) ||
+      !["text", "reply", "reaction", "attachment", "voice"].includes(message.content?.type) ||
       !phoneOK(message.sender?.id) ||
       typeof message.id !== "string" ||
       message.id.length > 256 ||
@@ -249,7 +250,11 @@ export class Store {
         ? typeof message.content.emoji !== "string" ||
           message.content.emoji.length > 32 ||
           typeof message.content.targetId !== "string"
-        : typeof message.content.text !== "string" ||
+        : ["attachment", "voice"].includes(message.content.type)
+          ? typeof message.content.id !== "string" || message.content.id.length > 256 ||
+            typeof message.content.name !== "string" || message.content.name.length > 500 ||
+            typeof message.content.mimeType !== "string" || message.content.mimeType.length > 150
+          : typeof message.content.text !== "string" ||
           message.content.text.length > 16000)
     )
       return null;
@@ -320,7 +325,9 @@ export class Store {
         id: j.id,
         lease,
         kind: p.message.content.type,
-        ...(p.message.content.type === "reaction"
+        ...(["attachment", "voice"].includes(p.message.content.type)
+          ? {attachment: p.message.content}
+          : p.message.content.type === "reaction"
           ? {
               emoji: p.message.content.emoji,
               targetId: p.message.content.targetId,
@@ -338,8 +345,14 @@ export class Store {
       throw e;
     }
   }
+  leasedPayload(accountId, id, lease) {
+    const j = this.db.prepare("SELECT * FROM jobs WHERE id=? AND account_id=?").get(id, accountId);
+    if (!j) throw new Failure(404, "Message not found.");
+    if (j.state !== "leased" || j.lease !== hash(lease || "") || j.lease_until < this.now()) throw new Failure(409, "Message lease expired.");
+    return this.open(j.payload);
+  }
   reply(accountId, id, lease, text, operation = "send") {
-    if (!["send", "reply", "react", "ack"].includes(operation))
+    if (!["send", "reply", "react", "ack", "send-content", "reply-content"].includes(operation))
       throw new Failure(400, "Unsupported message operation.");
     if (
       operation === "react" &&
@@ -350,8 +363,9 @@ export class Store {
           .length !== 1)
     )
       throw new Failure(400, "Reaction must be one emoji.");
+    if (["send-content", "reply-content"].includes(operation)) validateParts(text);
     if (
-      operation !== "ack" &&
+      !["ack", "send-content", "reply-content"].includes(operation) &&
       (typeof text !== "string" || !text.trim() || text.length > 4000)
     )
       throw new Failure(400, "Reply must contain 1–4000 characters.");
@@ -374,7 +388,7 @@ export class Store {
       throw new Failure(409, "Message lease expired.");
     const payload = this.open(j.payload);
     if (
-      ["reply", "react"].includes(operation) &&
+      ["reply", "reply-content", "react"].includes(operation) &&
       payload.message.content.type === "reaction"
     )
       throw new Failure(

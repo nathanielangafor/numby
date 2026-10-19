@@ -1,5 +1,6 @@
-import { Spectrum, reply, reaction, text } from "spectrum-ts";
+import { Spectrum, reply, reaction, text, attachment, voice, typing } from "spectrum-ts";
 import { imessage } from "spectrum-ts/providers/imessage";
+import { readBoundedAttachment } from "./media.js";
 export class Photon {
   constructor(projectId, secret) {
     this.projectId = projectId;
@@ -35,7 +36,7 @@ export class Photon {
       projectSecret: this.secret,
       providers: [imessage.config()],
       telemetry: false,
-      options: { logLevel: "error" },
+      options: { logLevel: "error", flattenGroups: true },
     });
     this.ready = true;
     try {
@@ -56,6 +57,16 @@ export class Photon {
     } finally {
       this.ready = false;
     }
+  }
+  async download(payload) {
+    if (!this.ready) throw new Error("Provider unavailable");
+    const file = await imessage(this.app).getAttachment(payload.message.content.id, payload.space.phone);
+    return readBoundedAttachment(file);
+  }
+  async signal(payload, active) {
+    if (!this.ready) throw new Error("Provider unavailable");
+    const space = await imessage(this.app).space.get(payload.space.id);
+    await space.send(typing(active ? "start" : "stop"));
   }
   async send(payload, value, operation) {
     if (!this.ready) throw new Error("Provider unavailable");
@@ -98,7 +109,16 @@ export function normalizeInbound(space, message) {
       emoji: message.content.emoji,
       targetId: message.content.target?.id,
     };
-  else return null;
+  else if (["attachment", "voice"].includes(message.content?.type)) {
+    const c = message.content;
+    if (typeof c.id !== "string") return null;
+    content = { type: c.type, id: c.id, name: c.name || "attachment", mimeType: c.mimeType || "application/octet-stream",
+      ...(Number.isFinite(c.size) ? {size: c.size} : {}) };
+  } else if (message.content?.type === "reply" && ["attachment", "voice"].includes(message.content.content?.type)) {
+    const inner = normalizeInbound(space, {...message, content: message.content.content});
+    if (!inner) return null;
+    content = {...inner.message.content, targetId: message.content.target?.id};
+  } else return null;
   return {
     space: {
       id: space.id,
@@ -130,6 +150,17 @@ export async function deliver(space, message, value, operation) {
         ? { type: "text", text: message.content.text }
         : message.content,
   };
+  if (["send-content", "reply-content"].includes(operation)) {
+    let last;
+    for (const part of value) {
+      let item = part.type === "text" ? text(part.text) :
+        (part.type === "voice" ? voice : attachment)(Buffer.from(part.data, "base64"), {name: part.name, mimeType: part.mimeType});
+      if (operation === "reply-content") item = reply(item, target);
+      last = await space.send(item);
+      if (!last) throw new Error("Provider did not confirm the content part");
+    }
+    return last;
+  }
   let content;
   if (operation === "send") content = value;
   else if (operation === "reply") content = reply(text(value), target);

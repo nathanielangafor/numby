@@ -11,7 +11,7 @@ for p in pathlib.Path(sys.argv[1]).glob('*.json'):
  try:
   v=json.loads(p.read_text())
   if all(k in v for k in ('id','lease','conversation')):
-   items.append({k:v[k] for k in ('id','lease','kind','text','emoji','targetId','replyTo','conversation') if k in v})
+   items.append({k:v[k] for k in ('id','lease','kind','text','emoji','targetId','replyTo','conversation','attachment') if k in v})
  except (ValueError,OSError):continue
 print(json.dumps({'items':items}))
 PY

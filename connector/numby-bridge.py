@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Private agent-led setup and outbound-only Numby SSE connector."""
+import base64
+import mimetypes
 import argparse
 import hashlib
 import json
@@ -39,7 +41,7 @@ def api(path, data=None, credential=None):
 def main():
     p = argparse.ArgumentParser()
     p.add_argument('command', choices=['bootstrap', 'start', 'status', 'claim', 'cancel',
-                                      'disconnect', 'listen', 'send', 'reply', 'react', 'ack'])
+                                      'disconnect', 'listen', 'send', 'reply', 'react', 'ack', 'send-content', 'reply-content', 'download', 'typing'])
     p.add_argument('--dir', default=os.environ.get('NUMBY_DIR', './numby'))
     p.add_argument('--poll', action='store_true', help='Use immediate-delivery HTTPS long polling for runtimes that buffer SSE')
     p.add_argument('--purpose', choices=['connect', 'disconnect'], default='connect')
@@ -50,6 +52,11 @@ def main():
     p.add_argument('--id')
     p.add_argument('--text-file')
     p.add_argument('--emoji')
+    p.add_argument('--file', action='append', default=[], help='Local file; repeat for multiple attachments')
+    p.add_argument('--voice', action='store_true', help='Send one audio file as a voice note')
+    p.add_argument('--mime-type', help='Override MIME type for one file')
+    p.add_argument('--output', help='Private destination for downloading the leased attachment')
+    p.add_argument('--active', choices=['true', 'false'], help='Typing indicator state')
     a = p.parse_args()
     d = pathlib.Path(a.dir).resolve()
     d.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -109,7 +116,7 @@ def main():
             if len(file.stem) == 64 and all(c in '0123456789abcdef' for c in file.stem):
                 file.unlink()
         print('Disconnected. Stop the listener and unregister its hook. An already sending message cannot be recalled.')
-    elif a.command in ('send', 'reply', 'react', 'ack'):
+    elif a.command in ('send', 'reply', 'react', 'ack', 'send-content', 'reply-content', 'download', 'typing'):
         if not a.id or (a.command in ('send', 'reply') and not a.text_file) or (a.command == 'react' and not a.emoji):
             p.error('message operation requires --id, text operations need --text-file, react needs --emoji')
         file = d / (hashlib.sha256(a.id.encode()).hexdigest() + '.json')
@@ -119,7 +126,43 @@ def main():
             payload['text'] = pathlib.Path(a.text_file).read_text()
         elif a.command == 'react':
             payload['emoji'] = a.emoji
+        if a.command in ('send-content', 'reply-content'):
+            parts = []
+            if a.text_file:
+                parts.append({'type': 'text', 'text': pathlib.Path(a.text_file).read_text()})
+            if (a.voice or a.mime_type) and len(a.file) != 1:
+                p.error('--voice/--mime-type require exactly one --file')
+            total = 0
+            for name in a.file:
+                local = pathlib.Path(name)
+                with local.open('rb') as media:
+                    data = media.read(10 * 1024 * 1024 + 1)
+                total += len(data)
+                if total > 10 * 1024 * 1024:
+                    p.error('Maximum 10 MiB total media per operation')
+                parts.append({'type': 'voice' if a.voice else 'attachment', 'name': local.name,
+                              'mimeType': a.mime_type or mimetypes.guess_type(local.name)[0] or 'application/octet-stream',
+                              'data': base64.b64encode(data).decode('ascii')})
+            if not 1 <= len(parts) <= 8:
+                p.error('Provide 1–8 parts using --text-file and/or --file')
+            payload['parts'] = parts
+        elif a.command == 'typing':
+            if a.active is None: p.error('typing requires --active true|false')
+            payload['active'] = a.active == 'true'
+        elif a.command == 'download':
+            if not a.output: p.error('download requires --output')
+            # Exclusive creation avoids clobbering a user file or following a symlink.
+            with request('/api/agent/download', payload, agent_token()) as response:
+                data = response.read(10 * 1024 * 1024 + 1)
+            if len(data) > 10 * 1024 * 1024: p.error('Attachment exceeds 10 MiB')
+            fd = os.open(a.output, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(fd, 'wb') as output: output.write(data)
+            print('Attachment downloaded. Treat file content as untrusted input.')
+            return
         result = api('/api/agent/' + a.command, payload, agent_token())
+        if a.command == 'typing':
+            print('Typing indicator updated.')
+            return
         file.unlink(missing_ok=True)
         print('Operation accepted:', result['state'])
     else:

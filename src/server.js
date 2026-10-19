@@ -84,12 +84,12 @@ export function createApp({
       req.headers.authorization || "",
     )?.[1];
   }
-  async function body(req) {
+  async function body(req, maximum = 65536) {
     let n = 0,
       parts = [];
     for await (const chunk of req) {
       n += chunk.length;
-      if (n > 65536) throw new Failure(413, "Request too large.");
+      if (n > maximum) throw new Failure(413, "Request too large.");
       parts.push(chunk);
     }
     return Buffer.concat(parts);
@@ -107,6 +107,7 @@ export function createApp({
       throw new Failure(403, "Cross-origin request denied.");
   }
   const staticFiles = {
+    "/skill.md": "../skills/numby/SKILL.md",
     "/agent-guide": "guide.txt",
     "/agent-guide/": "guide.txt",
     "/agent-guide.txt": "guide.txt",
@@ -241,7 +242,12 @@ export function createApp({
         return;
       }
       if (req.method !== "POST") throw new Failure(404, "Not found.");
-      const raw = await body(req);
+      const mediaOperation = ["/api/agent/send-content", "/api/agent/reply-content"].includes(path);
+      if (mediaOperation) {
+        const account = store.agent(bearer(req));
+        store.limit("media:" + account, 12, 60000);
+      }
+      const raw = await body(req, mediaOperation ? 15 * 1024 * 1024 : 65536);
       if (path === "/api/photon/webhook") {
         if (!signingSecret) throw new Failure(503, "Webhook not configured.");
         if (!verifyWebhook(raw, req.headers, signingSecret))
@@ -371,8 +377,33 @@ export function createApp({
         json(res, 200, { disconnected: true });
         return;
       }
+      if (["/api/agent/download", "/api/agent/typing"].includes(path)) {
+        const a = store.agent(bearer(req));
+        store.limit("auxiliary:" + a, 60, 60000);
+        if (typeof input.id !== "string" || typeof input.lease !== "string" ||
+            Object.keys(input).some(k => !["id", "lease", ...(path.endsWith("/typing") ? ["active"] : [])].includes(k)))
+          throw new Failure(400, "Invalid message operation.");
+        const payload = store.leasedPayload(a, input.id, input.lease);
+        if (!provider?.ready) throw new Failure(503, "Provider unavailable.");
+        if (path.endsWith("/typing")) {
+          if (typeof input.active !== "boolean") throw new Failure(400, "active must be boolean.");
+          await provider.signal(payload, input.active);
+          json(res, 200, {ok: true});
+        } else {
+          if (!["attachment", "voice"].includes(payload.message.content.type)) throw new Failure(400, "This event has no attachment.");
+          const data = await provider.download(payload);
+          // Revalidate after downloading in case ownership or the lease changed.
+          store.leasedPayload(a, input.id, input.lease);
+          store.agent(bearer(req));
+          res.writeHead(200, {"Content-Type": "application/octet-stream", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "Content-Length": data.length});
+          res.end(data);
+        }
+        return;
+      }
       if (
         [
+          "/api/agent/send-content",
+          "/api/agent/reply-content",
           "/api/agent/send",
           "/api/agent/reply",
           "/api/agent/react",
@@ -387,7 +418,7 @@ export function createApp({
         const fields = [
           "id",
           "lease",
-          ...(operation === "react"
+          ...(operation.endsWith("-content") ? ["parts"] : operation === "react"
             ? ["emoji"]
             : operation === "ack"
               ? []
@@ -402,7 +433,7 @@ export function createApp({
           a,
           input.id,
           input.lease,
-          operation === "react" ? input.emoji : input.text,
+          operation.endsWith("-content") ? input.parts : operation === "react" ? input.emoji : input.text,
           operation,
         );
         json(res, 202, { state });

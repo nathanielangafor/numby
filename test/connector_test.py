@@ -52,4 +52,20 @@ class ConnectorTest(unittest.TestCase):
             self.assertEqual(json.loads(file.read_text()), job)
             self.assertEqual(file.stat().st_mode & 0o777, 0o600)
 
+    def test_media_upload_reads_bytes_and_typing_keeps_job(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = pathlib.Path(td)
+            bridge.save(path / 'credential.json', {'token': 'private-agent'})
+            jobfile = path / (bridge.hashlib.sha256(b'message').hexdigest() + '.json')
+            bridge.save(jobfile, {'id': 'message', 'lease': 'lease'})
+            image = path / 'photo.png'; image.write_bytes(b'image bytes')
+            with patch('sys.argv', ['bridge', 'typing', '--dir', td, '--id', 'message', '--active', 'true']), patch.object(bridge, 'api', return_value={'ok': True}), contextlib.redirect_stdout(io.StringIO()):
+                bridge.main()
+            self.assertTrue(jobfile.exists())
+            with patch('sys.argv', ['bridge', 'send-content', '--dir', td, '--id', 'message', '--file', str(image)]), patch.object(bridge, 'api', return_value={'state': 'outbound'}) as api, contextlib.redirect_stdout(io.StringIO()):
+                bridge.main()
+            self.assertEqual(api.call_args.args[1]['parts'][0]['data'], bridge.base64.b64encode(b'image bytes').decode())
+            self.assertEqual(api.call_args.args[1]['parts'][0]['mimeType'], 'image/png')
+            self.assertFalse(jobfile.exists())
+
 if __name__ == '__main__': unittest.main()

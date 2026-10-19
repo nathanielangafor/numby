@@ -35,7 +35,7 @@ Serve `website/` through your HTTPS reverse proxy; proxy `/api/`, `/agent-guide.
 
 Setup is led by the agent with owner consent. A 15-minute setup token can only claim a connection after the exact challenge arrives from the owner's phone. Existing account records, delivery receipts, and service health are not ownership proofs. Every new setup refreshes the provider registration to recover from stale local assignments. Replacing an existing agent requires fresh verification and explicit owner consent.
 
-Supports direct text, threaded replies and added reactions. Groups and attachments are not exposed. Shared numbers are not exclusive numbers. For runtime proxies that buffer or drop SSE, `numby-bridge.py listen --poll` uses authenticated HTTPS long polling: each request returns immediately on arrival, or after a 20-second idle timeout, then reconnects without a sleep with the same tenant-scoped queue and leases. A persistent listener and a real agent wake mechanism are required; a successful transport test is not proof of an agent-generated response.
+Supports direct text, threaded replies, tapbacks, inbound/outbound photos, files, video and voice notes, multipart responses, and optional typing signals. Media is limited to 10 MiB total and 8 parts per operation. Read the [conversation skill](https://numby.io/skill.md) for commands and when to use them. Groups, calls, edits and unsends are not exposed. Shared numbers are not exclusive numbers. For runtime proxies that buffer or drop SSE, `numby-bridge.py listen --poll` uses authenticated HTTPS long polling: each request returns immediately on arrival, or after a 20-second idle timeout, then reconnects without a sleep with the same tenant-scoped queue and leases. A persistent listener and a real agent wake mechanism are required; a successful transport test is not proof of an agent-generated response.
 
 Tokens are hashed server-side; queued content is encrypted at rest. Jobs are tenant-scoped, leased and serialized. Ambiguous sends are held for review rather than blindly retried. Queued content expires after 24 hours; deduplication IDs remain for 30 days. The service cannot guarantee zero loss across upstream outages.
 
@@ -48,3 +48,5 @@ Use GitHub issues for reproducible, non-sensitive bugs. Never include phone numb
 ## License
 
 MIT; see [LICENSE](LICENSE). Third-party dependencies retain their own licenses. The license does not grant rights to third-party trademarks or imply affiliation with Photon or agent runtime providers.
+
+Media deployment: proxy `/skill.md` to the backend alongside `/api/`, `/connector/`, and `/agent-guide.txt`. Allow a 15 MiB request body for base64 media uploads; the application authenticates media requests and limits decoded bytes to 10 MiB. Disable request-body buffering if the proxy would otherwise spool private uploads to disk. Other API bodies remain limited to 64 KiB by the application.
