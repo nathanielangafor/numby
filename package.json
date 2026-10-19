@@ -1,0 +1,19 @@
+{
+  "name": "numby-server",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "spectrum-ts": "12.11.0"
+  },
+  "overrides": {
+    "@opentelemetry/core": "2.8.0"
+  }
+}

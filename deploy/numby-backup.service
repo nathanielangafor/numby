@@ -1,0 +1,14 @@
+[Unit]
+Description=Encrypted Numby routing backup without message bodies
+[Service]
+Type=oneshot
+User=numby
+Group=numby
+WorkingDirectory=/srv/numby/backend-current
+EnvironmentFile=/etc/numby/backend.env
+ExecStart=/opt/node/bin/node src/backup.js
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/numby
