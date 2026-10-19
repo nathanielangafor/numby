@@ -16,9 +16,9 @@ for p in pathlib.Path(sys.argv[1]).glob('*.json'):
 print(json.dumps({'items':items}))
 PY
 )
-previous=$(hook_state_get 2>/dev/null || printf '{}')
+previous=$(hook_state_get 2>/dev/null | jq -c '.seen // []' 2>/dev/null) || previous='[]'
 # A retry receives a new lease. Wake once per (message id, lease).
 next=$(printf '%s' "$payload" | jq -c '[.items[]|[.id,.lease]]')
 if [[ "$next" == '[]' || "$previous" == "$next" ]]; then silent 'no new messages' '{}'; fi
-hook_state_set "$next"
+hook_state_set "$(jq -cn --argjson seen "$next" '{seen: $seen}')"
 wake 'Numby message received' "$payload"

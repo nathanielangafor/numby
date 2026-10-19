@@ -41,7 +41,7 @@ def main():
     p.add_argument('command', choices=['bootstrap', 'start', 'status', 'claim', 'cancel',
                                       'disconnect', 'listen', 'send', 'reply', 'react', 'ack'])
     p.add_argument('--dir', default=os.environ.get('NUMBY_DIR', './numby'))
-    p.add_argument('--poll', action='store_true', help='Use finite HTTPS polling for runtimes that buffer SSE')
+    p.add_argument('--poll', action='store_true', help='Use immediate-delivery HTTPS long polling for runtimes that buffer SSE')
     p.add_argument('--purpose', choices=['connect', 'disconnect'], default='connect')
     p.add_argument('--phone-file')
     p.add_argument('--consent', action='store_true')
@@ -128,11 +128,11 @@ def main():
         while True:
             try:
                 if a.poll:
-                    job = api('/api/agent/poll', credential=secret)['message']
+                    job = api('/api/agent/poll?wait=20', credential=secret)['message']
                     if job is not None:
                         save(d / (hashlib.sha256(job['id'].encode()).hexdigest() + '.json'), job)
                     backoff = 1
-                    time.sleep(5)
+                    continue  # The server waits; reconnect immediately after every response.
                 else:
                     with request('/api/agent/events', credential=secret) as stream:
                         backoff = 1

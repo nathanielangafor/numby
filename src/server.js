@@ -12,10 +12,12 @@ export function createApp({
 }) {
   const streams = new Map();
   const polls = new Map();
+  const waiters = new Map();
   let sending = false;
   const log = (event, extra = {}) =>
     console.log(JSON.stringify({ event, ...extra }));
   function push(account) {
+    waiters.get(account)?.check();
     const stream = streams.get(account);
     if (!stream || stream.destroyed) return;
     const job = store.lease(account);
@@ -161,7 +163,7 @@ export function createApp({
         json(res, 200, {
           assigned: a.assigned,
           shared: true,
-          agentConnected: !!streams.get(accountId) || Date.now() - (polls.get(accountId) || 0) < 15000,
+          agentConnected: waiters.has(accountId) || !!streams.get(accountId) || Date.now() - (polls.get(accountId) || 0) < 15000,
           pending: !!counts.pending,
           needsAttention: !!counts.attention,
         });
@@ -169,9 +171,47 @@ export function createApp({
       }
       if (path === "/api/agent/poll" && req.method === "GET") {
         const accountId = store.agent(bearer(req));
-        store.limit("poll:" + accountId, 30, 60000);
+        const wait = Number(url.searchParams.get("wait") || 0);
+        if (!Number.isInteger(wait) || wait < 0 || wait > 20)
+          throw new Failure(400, "wait must be an integer from 0 to 20 seconds.");
+        store.limit("poll:" + accountId, 120, 60000);
+        if (waiters.has(accountId))
+          throw new Failure(409, "A delivery request is already waiting. Run one listener.");
         polls.set(accountId, Date.now());
-        json(res, 200, { message: store.lease(accountId) });
+        const message = store.lease(accountId);
+        if (message || !wait) {
+          json(res, 200, { message });
+          return;
+        }
+        let timer;
+        const cleanup = () => {
+          clearTimeout(timer);
+          if (waiters.get(accountId) === waiter) waiters.delete(accountId);
+        };
+        const finish = (status, value) => {
+          cleanup();
+          if (!res.destroyed && !res.writableEnded) {
+            polls.set(accountId, Date.now());
+            json(res, status, value);
+          }
+        };
+        const waiter = {
+          finish,
+          check(expired = false) {
+            if (res.destroyed || res.writableEnded) { cleanup(); return; }
+            try {
+              // Recheck the credential before leasing, including after replacement.
+              store.agent(bearer(req));
+              const message = store.lease(accountId);
+              if (message || expired) finish(200, { message });
+            } catch (e) {
+              finish(e.status || 500, { error: e.status ? e.message : "Delivery unavailable." });
+            }
+          },
+        };
+        waiters.set(accountId, waiter);
+        timer = setTimeout(() => waiter.check(true), wait * 1000);
+        res.once("close", cleanup);
         return;
       }
       if (path === "/api/agent/events" && req.method === "GET") {
@@ -318,6 +358,7 @@ export function createApp({
           input.replace,
         );
         streams.get(result.accountId)?.end();
+        waiters.get(result.accountId)?.check();
         const { accountId, ...publicResult } = result;
         json(res, 200, publicResult);
         return;
@@ -326,6 +367,7 @@ export function createApp({
         const accountId = store.agent(bearer(req));
         store.revoke(accountId);
         streams.get(accountId)?.end();
+        waiters.get(accountId)?.check();
         json(res, 200, { disconnected: true });
         return;
       }
@@ -383,7 +425,7 @@ export function createApp({
     for (const [id, seen] of polls) {
       if (Date.now() - seen >= 15000) polls.delete(id);
     }
-    for (const a of streams.keys()) push(a);
+    for (const a of new Set([...streams.keys(), ...waiters.keys()])) push(a);
     void sendPending();
   }, 30000);
   const cleanup = setInterval(() => store.cleanup(), 3600000);
@@ -398,6 +440,7 @@ export function createApp({
     server,
     closeStreams: () => {
       for (const r of streams.values()) r.end();
+      for (const w of waiters.values()) w.finish(503, { error: "Server restarting." });
     },
   };
 }

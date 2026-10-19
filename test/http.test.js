@@ -404,3 +404,67 @@ test("finite polling authenticates, isolates tenants and preserves exclusive lea
     await new Promise(r => server.close(r)); store.db.close();
   }
 });
+
+test("long polling delivers on arrival, handles idle, duplicate, abort and revocation", async () => {
+  const store = new Store(":memory:", "b".repeat(64));
+  let receive;
+  const {server, closeStreams} = createApp({store, provider: {
+    ready: true, async connect(fn) { receive = fn; }, async send() {},
+  }});
+  const setup = store.bootstrap();
+  const challenge = store.begin(phone, {id: phone, assignedPhoneNumber: assigned}, setup.setupToken).challenge;
+  const inbound = text => receive({platform: "imessage", type: "dm", phone: "shared", id: "dm"}, {
+    id: crypto.randomUUID(), direction: "inbound", sender: {id: phone}, content: {type: "text", text},
+  });
+  inbound(challenge);
+  const token = store.completeSetup(setup.setupToken, "connect").token;
+  const account = store.agent(token);
+  await new Promise(r => server.listen(0, "127.0.0.1", r));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const get = (path, signal) => fetch(base + path, {headers: {Authorization: `Bearer ${token}`}, signal});
+  // Synchronize on request registration, not a guessed network sleep.
+  const registered = () => new Promise(resolve => server.once("request", resolve));
+  try {
+    for (const wait of ["-1", "21", "foo", "0.5"])
+      assert.equal((await get('/api/agent/poll?wait=' + wait)).status, 400);
+    let ready = registered();
+    const pending = get('/api/agent/poll?wait=20');
+    await ready;
+    assert.equal((await get('/api/agent/poll?wait=20')).status, 409);
+    assert.equal((await (await get('/api/agent/status')).json()).agentConnected, true);
+    const start = performance.now();
+    inbound('immediate arrival');
+    const job = (await (await pending).json()).message;
+    const elapsed = performance.now() - start;
+    assert.equal(job.text, 'immediate arrival');
+    assert.ok(elapsed < 1000, `delivery took ${elapsed}ms`);
+    console.log(`long-poll arrival delivered in ${elapsed.toFixed(1)}ms`);
+    assert.equal((await (await get('/api/agent/poll')).json()).message, null);
+    store.reply(account, job.id, job.lease, undefined, 'ack');
+    const idleStart = performance.now();
+    assert.equal((await (await get('/api/agent/poll?wait=1')).json()).message, null);
+    assert.ok(performance.now() - idleStart >= 900);
+    const abort = new AbortController();
+    ready = registered();
+    const cancelled = get('/api/agent/poll?wait=20', abort.signal);
+    await ready;
+    abort.abort();
+    await assert.rejects(cancelled, {name: 'AbortError'});
+    // Wait until the server observes socket closure before the next delivery.
+    await new Promise(resolve => setTimeout(resolve, 50));
+    inbound('after client disconnect');
+    const after = (await (await get('/api/agent/poll')).json()).message;
+    assert.equal(after.text, 'after client disconnect');
+    store.reply(account, after.id, after.lease, undefined, 'ack');
+    ready = registered();
+    const revoked = get('/api/agent/poll?wait=20');
+    await ready;
+    await fetch(base + '/api/agent/disconnect', {method:'POST', headers:{Authorization:`Bearer ${token}`, 'Content-Type':'application/json'}, body:'{}'});
+    assert.equal((await revoked).status, 401);
+  } finally {
+    closeStreams();
+    server.closeAllConnections();
+    await new Promise(r => server.close(r));
+    store.db.close();
+  }
+});

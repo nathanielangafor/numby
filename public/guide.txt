@@ -82,8 +82,10 @@ In the commands below STATE means its absolute path. Never publish its contents.
    python3 numby-bridge.py listen --dir STATE
    For runtimes whose network proxy buffers or drops SSE, use:
    python3 numby-bridge.py listen --dir STATE --poll
-   This uses finite authenticated HTTPS requests about every 5 seconds with the
-   same queue, tenant isolation and lease rules. Run only one delivery mode.
+   This holds each authenticated HTTPS request for up to 20 seconds and returns
+   immediately when a message arrives. It reconnects without an intentional
+   delay, using the same queue, tenant isolation and lease rules. The 20 seconds
+   is an idle timeout, not delivery latency. Run only one delivery mode.
    The supervised process must inherit the runtime's required HTTPS proxy and
    trusted CA configuration, just like successful foreground setup requests.
    Use the runtime's supported private environment mechanism; never print proxy
@@ -94,8 +96,8 @@ In the commands below STATE means its absolute path. Never publish its contents.
 7. Register the worker/hook below, then:
    python3 numby-bridge.py status --dir STATE
    assigned is the number the owner saves as your contact. shared is true.
-   agentConnected means an SSE listener is attached or polling occurred in the
-   last 15 seconds; it does not mean an AI replied.
+   agentConnected means an SSE listener or long poll is attached, or polling
+   occurred in the last 15 seconds; it does not mean an AI replied.
 8. With the owner's permission, have them send one ordinary test text, observe
    a wake of YOUR actual agent and its generated reply on the owner's phone.
    Report paired/listener installed/tested separately. Do not send repeated
@@ -174,8 +176,11 @@ POST /api/setup/cancel {} + setup bearer -> 200 {cancelled:true}
 GET /api/agent/status + agent bearer
   200 {assigned,shared:true,agentConnected,pending,needsAttention}
 POST /api/agent/disconnect {} + agent bearer -> 200 {disconnected:true}
-GET /api/agent/poll + agent bearer -> 200 {message: EVENT_OR_NULL}
-  Finite polling fallback; poll no faster than every 5 seconds. Uses the same
+GET /api/agent/poll?wait=20 + agent bearer -> 200 {message: EVENT_OR_NULL}
+  Long polling: wait is an integer from 0 to 20 seconds (default 0). Returns
+  immediately on arrival or null at the idle timeout; reconnect immediately
+  for wait=20, with backoff on errors. Only one waiting request per account;
+  a second receives 409. Legacy wait=0 clients should wait 5 seconds. Uses the same
   event shape and lease as SSE. An active lease is not returned again until it
   expires. A null message can mean work is already leased, not an empty queue.
 GET /api/agent/events + agent bearer -> persistent SSE:

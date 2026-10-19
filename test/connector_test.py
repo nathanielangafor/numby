@@ -38,4 +38,18 @@ class ConnectorTest(unittest.TestCase):
                 with self.assertRaises(SystemExit): bridge.main()
                 api.assert_not_called()
 
+    def test_long_poll_reconnects_immediately_and_saves_private_event(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = pathlib.Path(td)
+            bridge.save(path / 'credential.json', {'token': 'private-agent'})
+            job = {'id': 'message', 'lease': 'lease', 'conversation': 'dm', 'text': 'test'}
+            with patch('sys.argv', ['bridge', 'listen', '--poll', '--dir', td]), patch.object(bridge, 'api', side_effect=[{'message': job}, {'message': None}, KeyboardInterrupt]) as api, patch.object(bridge.time, 'sleep') as sleep:
+                with self.assertRaises(KeyboardInterrupt): bridge.main()
+                self.assertEqual(api.call_count, 3)
+                api.assert_called_with('/api/agent/poll?wait=20', credential='private-agent')
+                sleep.assert_not_called()
+            file = path / (bridge.hashlib.sha256(b'message').hexdigest() + '.json')
+            self.assertEqual(json.loads(file.read_text()), job)
+            self.assertEqual(file.stat().st_mode & 0o777, 0o600)
+
 if __name__ == '__main__': unittest.main()
