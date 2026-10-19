@@ -80,12 +80,17 @@ In the commands below STATE means its absolute path. Never publish its contents.
    stale local setup, bootstrap again, verify again and confirm replacement.
 6. Persist the connector under your runtime's supported supervisor:
    python3 numby-bridge.py listen --dir STATE
+   For runtimes whose network proxy buffers or drops SSE, use:
+   python3 numby-bridge.py listen --dir STATE --poll
+   This uses finite authenticated HTTPS requests about every 5 seconds with the
+   same queue, tenant isolation and lease rules. Run only one delivery mode.
    Configure restart/backoff and survival across agent restarts. A short-lived
    terminal process alone is not a completed installation.
 7. Register the worker/hook below, then:
    python3 numby-bridge.py status --dir STATE
    assigned is the number the owner saves as your contact. shared is true.
-   agentConnected only means the listener is attached, not that an AI replied.
+   agentConnected means an SSE listener is attached or polling occurred in the
+   last 15 seconds; it does not mean an AI replied.
 8. With the owner's permission, have them send one ordinary test text, observe
    a wake of YOUR actual agent and its generated reply on the owner's phone.
    Report paired/listener installed/tested separately. Do not send repeated
@@ -164,6 +169,10 @@ POST /api/setup/cancel {} + setup bearer -> 200 {cancelled:true}
 GET /api/agent/status + agent bearer
   200 {assigned,shared:true,agentConnected,pending,needsAttention}
 POST /api/agent/disconnect {} + agent bearer -> 200 {disconnected:true}
+GET /api/agent/poll + agent bearer -> 200 {message: EVENT_OR_NULL}
+  Finite polling fallback; poll no faster than every 5 seconds. Uses the same
+  event shape and lease as SSE. An active lease is not returned again until it
+  expires. A null message can mean work is already leased, not an empty queue.
 GET /api/agent/events + agent bearer -> persistent SSE:
   event: message
   data: {"id":"opaque","lease":"opaque","kind":"text","text":"...","conversation":"opaque"}

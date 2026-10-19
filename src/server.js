@@ -11,6 +11,7 @@ export function createApp({
   signingSecret = "",
 }) {
   const streams = new Map();
+  const polls = new Map();
   let sending = false;
   const log = (event, extra = {}) =>
     console.log(JSON.stringify({ event, ...extra }));
@@ -160,10 +161,17 @@ export function createApp({
         json(res, 200, {
           assigned: a.assigned,
           shared: true,
-          agentConnected: !!streams.get(accountId),
+          agentConnected: !!streams.get(accountId) || Date.now() - (polls.get(accountId) || 0) < 15000,
           pending: !!counts.pending,
           needsAttention: !!counts.attention,
         });
+        return;
+      }
+      if (path === "/api/agent/poll" && req.method === "GET") {
+        const accountId = store.agent(bearer(req));
+        store.limit("poll:" + accountId, 30, 60000);
+        polls.set(accountId, Date.now());
+        json(res, 200, { message: store.lease(accountId) });
         return;
       }
       if (path === "/api/agent/events" && req.method === "GET") {
@@ -372,6 +380,9 @@ export function createApp({
   server.requestTimeout = 20000;
   server.keepAliveTimeout = 5000;
   const recovery = setInterval(() => {
+    for (const [id, seen] of polls) {
+      if (Date.now() - seen >= 15000) polls.delete(id);
+    }
     for (const a of streams.keys()) push(a);
     void sendPending();
   }, 30000);

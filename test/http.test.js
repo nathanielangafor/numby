@@ -365,3 +365,42 @@ test("new setup reconciles stale provider routing and fails closed on provider o
     store.db.close();
   }
 });
+
+test("finite polling authenticates, isolates tenants and preserves exclusive leases", async () => {
+  let now = Date.now();
+  const store = new Store(":memory:", "b".repeat(64), () => now);
+  function paired(owner) {
+    const setup = store.bootstrap();
+    const result = store.begin(owner, {id: owner, assignedPhoneNumber: assigned}, setup.setupToken);
+    store.ingest({platform: "imessage", type: "dm", phone: "shared", id: owner}, {
+      id: crypto.randomUUID(), direction: "inbound", sender: {id: owner}, content: {type: "text", text: result.challenge},
+    });
+    return store.completeSetup(setup.setupToken, "connect").token;
+  }
+  const credential = paired(phone), other = paired("+12405550102");
+  store.ingest({platform: "imessage", type: "dm", phone: "shared", id: "owner-dm"}, {
+    id: "poll-message", direction: "inbound", sender: {id: phone}, content: {type: "text", text: "poll test"},
+  });
+  const {server} = createApp({store});
+  await new Promise(r => server.listen(0, "127.0.0.1", r));
+  const get = (path, token) => fetch(`http://127.0.0.1:${server.address().port}${path}`, {headers: token ? {Authorization: `Bearer ${token}`} : {}});
+  try {
+    assert.equal((await get("/api/agent/poll")).status, 401);
+    assert.equal((await get("/api/agent/poll", store.bootstrap().setupToken)).status, 401);
+    assert.equal((await (await get("/api/agent/poll", other)).json()).message, null);
+    const response = await get("/api/agent/poll", credential);
+    assert.equal(response.headers.get("cache-control"), "no-store");
+    const first = (await response.json()).message;
+    assert.equal(first.text, "poll test");
+    assert.equal((await (await get("/api/agent/status", credential)).json()).agentConnected, true);
+    assert.equal((await (await get("/api/agent/poll", credential)).json()).message, null);
+    now += 600001;
+    const retry = (await (await get("/api/agent/poll", credential)).json()).message;
+    assert.equal(retry.id, first.id);
+    assert.notEqual(retry.lease, first.lease);
+    store.revoke(store.agent(credential));
+    assert.equal((await get("/api/agent/poll", credential)).status, 401);
+  } finally {
+    await new Promise(r => server.close(r)); store.db.close();
+  }
+});

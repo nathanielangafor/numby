@@ -41,6 +41,7 @@ def main():
     p.add_argument('command', choices=['bootstrap', 'start', 'status', 'claim', 'cancel',
                                       'disconnect', 'listen', 'send', 'reply', 'react', 'ack'])
     p.add_argument('--dir', default=os.environ.get('NUMBY_DIR', './numby'))
+    p.add_argument('--poll', action='store_true', help='Use finite HTTPS polling for runtimes that buffer SSE')
     p.add_argument('--purpose', choices=['connect', 'disconnect'], default='connect')
     p.add_argument('--phone-file')
     p.add_argument('--consent', action='store_true')
@@ -126,12 +127,19 @@ def main():
         backoff = 1
         while True:
             try:
-                with request('/api/agent/events', credential=secret) as stream:
+                if a.poll:
+                    job = api('/api/agent/poll', credential=secret)['message']
+                    if job is not None:
+                        save(d / (hashlib.sha256(job['id'].encode()).hexdigest() + '.json'), job)
                     backoff = 1
-                    for line in stream:
-                        if line.startswith(b'data: '):
-                            job = json.loads(line[6:])
-                            save(d / (hashlib.sha256(job['id'].encode()).hexdigest() + '.json'), job)
+                    time.sleep(5)
+                else:
+                    with request('/api/agent/events', credential=secret) as stream:
+                        backoff = 1
+                        for line in stream:
+                            if line.startswith(b'data: '):
+                                job = json.loads(line[6:])
+                                save(d / (hashlib.sha256(job['id'].encode()).hexdigest() + '.json'), job)
             except urllib.error.HTTPError as e:
                 if e.code == 401:
                     sys.exit('Credential revoked. Use agent-led bootstrap and fresh phone verification to reconnect.')
