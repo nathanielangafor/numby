@@ -149,7 +149,7 @@ python3 numby-bridge.py worker-start --dir STATE --id MESSAGE_ID
 Retain the returned private worker value as WORKER. A failed claim means stop;
 another worker owns it. Never bypass it by deleting a job/claim file.
 Draft an answer using your actual agent. Write it to a mode-0600 UTF-8 REPLY_FILE:
-python3 numby-bridge.py send --dir STATE --id MESSAGE_ID --worker WORKER --text-file REPLY_FILE
+python3 numby-bridge.py send --dir STATE --id MESSAGE_ID --worker WORKER --text-file REPLY_FILE --wait 5
 Ordinary send is the default. Use reply only when an inline/threaded response
 is relevant, with the same arguments. Other terminal choices:
 python3 numby-bridge.py react --dir STATE --id MESSAGE_ID --worker WORKER --emoji '👍'
@@ -281,3 +281,15 @@ claims to resolve a stall. Verify a fresh real message and its response on the
 owner's device. A listening connection alone is not a completed setup.
 Older connectors remain compatible with the server but do not gain these local
 worker safeguards until upgraded; publishing this guide cannot upgrade them.
+
+PER-MESSAGE DELIVERY STATUS
+GET /api/agent/message-status?id=MESSAGE_ID with the agent bearer returns only
+that account's message state, operation, providerConfirmed, needsAttention,
+and safe delivery error fields when available. Unknown/other-account IDs are 404.
+CLI: python3 numby-bridge.py status --dir STATE --id MESSAGE_ID
+Use --wait 5 on a send/reply/react/media command to observe the provider result.
+A 202/outbound response is Numby queue acceptance, not Photon acceptance.
+An uncertain result is not evidence that Photon accepted the message.
+A successful provider call is not necessarily a device delivery receipt;
+deviceDeliveryConfirmed remains null until independently verified.
+Never attribute aggregate needsAttention to every message or resend automatically.

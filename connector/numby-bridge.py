@@ -15,6 +15,7 @@ import secrets
 import tempfile
 import urllib.error
 import urllib.request
+import urllib.parse
 
 BASE = 'https://numby.io'
 
@@ -141,6 +142,7 @@ def main():
     p.add_argument('--confirmed', action='store_true')
     p.add_argument('--id')
     p.add_argument('--worker', help='Private ownership token returned by worker-start')
+    p.add_argument('--wait', type=int, choices=range(0, 31), default=0, metavar='0..30', help='After acceptance, wait up to this many seconds for provider outcome')
     p.add_argument('--text-file')
     p.add_argument('--emoji')
     p.add_argument('--file', action='append', default=[], help='Local file; repeat for multiple attachments')
@@ -196,7 +198,9 @@ def main():
         phone = pathlib.Path(a.phone_file).read_text().strip()
         show_status(api('/api/setup/start', {'phone': phone, 'consent': True}, setup_token()))
     elif a.command == 'status':
-        if setup_file.exists():
+        if a.id:
+            show_status(api('/api/agent/message-status?id=' + urllib.parse.quote(a.id, safe=''), credential=agent_token()))
+        elif setup_file.exists():
             show_status(api('/api/setup/status', credential=setup_token()))
         else:
             show_status(api('/api/agent/status', credential=agent_token()))
@@ -283,8 +287,18 @@ def main():
             save(ledger / file.name, {'phase': 'accepted', 'operation': a.command,
                                      'state': result['state'], 'updated': time.time()})
             file.unlink(missing_ok=True)
-        print(json.dumps({'operation': a.command, 'state': result['state'], 'localJobRemoved': True,
-                          'providerConfirmed': result['state'] == 'sent' and a.command != 'ack'}))
+        receipt = {'operation': a.command, 'state': result['state'], 'localJobRemoved': True,
+                   'providerConfirmed': result['state'] == 'sent' and a.command != 'ack',
+                   'deviceDeliveryConfirmed': None}
+        for _ in range(a.wait):
+            if receipt['state'] in ('sent', 'uncertain', 'failed'): break
+            time.sleep(1)
+            try:
+                receipt.update(api('/api/agent/message-status?id=' + urllib.parse.quote(a.id, safe=''), credential=agent_token()))
+            except (OSError, ValueError):
+                receipt['statusUnavailable'] = True
+                break  # Acceptance is durable. Never resubmit because status lookup failed.
+        print(json.dumps(receipt))
     else:
         secret = agent_token()
         backoff = 1

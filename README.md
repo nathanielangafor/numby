@@ -65,7 +65,14 @@ worker's prose. Receipts suppress delayed duplicate events and are retained for
 Existing agents need the upgrade steps in the guide; the server cannot update
 remote agent installations automatically. Provider uncertainty stays held for
 review; no automatic threaded-to-plain fallback can safely guarantee no duplicate.
-Safe server diagnostics record operation, duration, failure category and numeric
-gRPC code when available, never provider error text or message bodies.
+Safe server diagnostics record operation, duration, failure category and typed error code, numeric
+gRPC code, safe error source and request ID when available, never provider error text or message bodies.
 
 Regression checks: `python3 -m unittest discover -s test -p '*_test.py'` and `npm test`.
+
+Per-message outcomes are available through `/api/agent/message-status?id=...`
+and `numby-bridge.py status --id ...`. Send commands accept `--wait 5` to observe
+the provider outcome without resubmitting. `outbound` means Numby queued the
+operation; `sent` means provider-confirmed; device receipt remains unknown.
+Typed provider diagnostics persist per job and are tenant-scoped. No raw provider
+error messages, message content, or credentials are included in status responses.

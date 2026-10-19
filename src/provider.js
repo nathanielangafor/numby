@@ -1,6 +1,7 @@
 import { Spectrum, reply, reaction, text, attachment, voice, typing } from "spectrum-ts";
 import { imessage } from "spectrum-ts/providers/imessage";
 import { readBoundedAttachment } from "./media.js";
+import { ErrorCode } from "@photon-ai/advanced-imessage/grpc";
 // Whitelisted diagnostics only: provider messages may contain phone numbers or tokens.
 export function deliveryFailure(error) {
   const reasons = new Map([
@@ -11,7 +12,12 @@ export function deliveryFailure(error) {
   ]);
   return {
     reason: reasons.get(error?.message) || "provider_error",
-    ...(Number.isInteger(error?.code) && error.code >= 0 && error.code <= 16 ? { grpcCode: error.code } : {}),
+    ...(["Error", "TypeError", "ZodError", "IMessageError", "AuthenticationError", "NotFoundError", "RateLimitError", "ValidationError", "ConnectionError", "UnsupportedError"].includes(error?.name) ? {errorType: error.name} : {}),
+    ...(Object.values(ErrorCode).includes(error?.code) ? {code: error.code} : {}),
+    ...(Number.isInteger(error?.grpcCode) && error.grpcCode >= 0 && error.grpcCode <= 16 ? { grpcCode: error.grpcCode } : {}),
+    ...(typeof error?.retryable === "boolean" ? {retryable: error.retryable} : {}),
+    ...(["upstream", "spectrum-imessage", "middleware", "intermediary"].includes(error?.source) ? {source: error.source} : {}),
+    ...(typeof error?.requestId === "string" && /^[A-Za-z0-9_-]{8,128}$/.test(error.requestId) ? {requestId: error.requestId} : {}),
   };
 }
 export class Photon {

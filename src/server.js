@@ -41,22 +41,23 @@ export function createApp({
         if (!claimed.changes) continue;
         const sendStarted = Date.now();
         try {
-          await provider.send(
+          const result = await provider.send(
             store.open(j.payload),
             store.open(j.reply),
             j.operation,
           );
           store.db
             .prepare(
-              "UPDATE jobs SET state='sent',payload=NULL,reply=NULL,updated=? WHERE id=?",
+              "UPDATE jobs SET state='sent',payload=NULL,reply=NULL,updated=?,delivery_info=? WHERE id=?",
             )
-            .run(Date.now(), j.id);
+            .run(Date.now(), JSON.stringify({elapsedMs: Date.now() - sendStarted,
+              ...(typeof result?.id === "string" && /^[A-Za-z0-9:;._-]{1,200}$/.test(result.id) ? {providerMessageId: result.id} : {})}), j.id);
           log("reply_sent", { id: j.id, operation: j.operation, elapsedMs: Date.now() - sendStarted });
           push(j.account_id);
         } catch (error) {
           store.db
-            .prepare("UPDATE jobs SET state='uncertain',updated=? WHERE id=?")
-            .run(Date.now(), j.id);
+            .prepare("UPDATE jobs SET state='uncertain',updated=?,delivery_info=? WHERE id=?")
+            .run(Date.now(), JSON.stringify({elapsedMs: Date.now() - sendStarted, ...deliveryFailure(error)}), j.id);
           log("reply_outcome_uncertain", { id: j.id, operation: j.operation,
             elapsedMs: Date.now() - sendStarted, ...deliveryFailure(error) });
         }
@@ -170,6 +171,14 @@ export function createApp({
           pending: !!counts.pending,
           needsAttention: !!counts.attention,
         });
+        return;
+      }
+      if (path === "/api/agent/message-status" && req.method === "GET") {
+        const accountId = store.agent(bearer(req));
+        store.limit("message-status:" + accountId, 300, 60000);
+        const id = new URL(req.url, origin).searchParams.get("id");
+        if (!id || id.length > 300) throw new Failure(400, "Message id required.");
+        json(res, 200, store.messageStatus(accountId, id));
         return;
       }
       if (path === "/api/agent/poll" && req.method === "GET") {

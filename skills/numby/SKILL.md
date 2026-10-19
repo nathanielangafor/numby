@@ -64,3 +64,19 @@ Record a concise worker outcome: replied, reacted, silently acknowledged, awaiti
 ## Actual scope
 
 This gateway supports paired one-to-one conversations, text, threaded replies, tapbacks, inbound/outbound attachments and voice notes, multipart replies and optional typing signals. Current limits: 10 MiB total media per operation; no group management, calls, live location, message editing/unsending, or proactive arbitrary-recipient sends. Do not claim complete iMessage feature parity. Platform support and media rendering depend on Photon and the recipient device; report unsupported operations accurately.
+
+## Check the specific delivery outcome
+
+For sends/replies/reactions/media, add `--wait 5` to the command to wait briefly
+for the provider outcome. Later, query `python3 BRIDGE status --dir STATE --id MESSAGE_ID`.
+This works after the local job is removed and needs no worker token.
+`outbound`/`sending` mean Numby accepted the operation, NOT that Photon did.
+`sent` with `providerConfirmed: true` means the provider call succeeded;
+`deviceDeliveryConfirmed: null` means device delivery was not independently checked.
+`uncertain` with a delivery error means the provider call failed or timed out.
+Do not call that "provider accepted but no receipt" or claim the message landed.
+Report `delivery.code` when present, never invent a reason from a generic error.
+Use this message's status, not aggregate `needsAttention`, to describe its outcome.
+Status lookup failure never authorizes re-sending. Do not automatically retry a
+provider failure, even if `retryable: true`; operator reconciliation is required
+because partial sends and transport failures can have ambiguous outcomes.

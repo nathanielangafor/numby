@@ -66,6 +66,8 @@ export class Store {
         "ALTER TABLE jobs ADD COLUMN operation TEXT NOT NULL DEFAULT 'send'",
       );
     // A crash after a provider send starts is ambiguous. Never silently resend it.
+    if (!this.db.prepare("PRAGMA table_info(jobs)").all().some(c => c.name === "delivery_info"))
+      this.db.exec("ALTER TABLE jobs ADD COLUMN delivery_info TEXT");
     this.db
       .prepare("UPDATE jobs SET state='uncertain' WHERE state='sending'")
       .run();
@@ -75,6 +77,15 @@ export class Store {
       c = createCipheriv("aes-256-gcm", this.key, iv);
     const data = Buffer.concat([c.update(JSON.stringify(value)), c.final()]);
     return Buffer.concat([iv, c.getAuthTag(), data]).toString("base64");
+  }
+  messageStatus(accountId, id) {
+    const job = this.db.prepare("SELECT state,operation,updated,delivery_info FROM jobs WHERE account_id=? AND id=?").get(accountId, id);
+    if (!job) throw new Failure(404, "Message not found.");
+    return {id, state: job.state, operation: job.operation, updatedAt: job.updated,
+      providerConfirmed: job.state === "sent" && job.operation !== "ack",
+      deviceDeliveryConfirmed: null,
+      needsAttention: ["uncertain", "failed"].includes(job.state),
+      ...(job.delivery_info ? {delivery: JSON.parse(job.delivery_info)} : {})};
   }
   open(value) {
     const b = Buffer.from(value, "base64"),

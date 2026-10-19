@@ -98,6 +98,18 @@ class DispatchTest(unittest.TestCase):
         self.assertNotIn('private', json.dumps(bridge.dispatch(self.d,0)))
         self.assertEqual((self.d/'dispatch').stat().st_mode & 0o777,0o700)
 
+    def test_terminal_wait_reports_failure_without_resubmission(self):
+        owner = bridge.worker_start(self.d, 'message', 0)
+        reply = self.d / 'reply.txt'; reply.write_text('hello')
+        with patch('sys.argv', ['bridge','send','--dir',str(self.d),'--id','message','--worker',owner,'--text-file',str(reply),'--wait','5']), patch.object(bridge,'api',side_effect=[{'state':'outbound'},{'state':'uncertain','needsAttention':True,'providerConfirmed':False,'delivery':{'code':'recipientCoolingDown'}}]) as api, patch.object(bridge.time,'sleep'), contextlib.redirect_stdout(io.StringIO()) as out:
+            bridge.main()
+        result=json.loads(out.getvalue())
+        self.assertEqual(result['state'],'uncertain')
+        self.assertFalse(result['providerConfirmed'])
+        self.assertEqual(api.call_count,2)
+        self.assertEqual(api.call_args.args[0],'/api/agent/message-status?id=message')
+        self.assertFalse(bridge.job_path(self.d,'message').exists())
+
     def test_reference_hook_uses_shared_dispatch_and_report_only_attention(self):
         runtime = self.d / 'runtime.sh'
         runtime.write_text('wake() { printf "%s\\n" "$2"; exit 0; }\nsilent() { printf "%s\\n" "$2"; exit 0; }\n')
