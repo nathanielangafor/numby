@@ -3,13 +3,15 @@
 [![Discord: Muse Agent community](https://img.shields.io/badge/Discord-Muse_Agent-5865F2?logo=discord&logoColor=white)](https://discord.gg/sxjhCPdEG6)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-![Numby: give your agent a phone number](website/assets/social.png)
+[![Numby: give your agent a phone number](website/assets/social.png)](https://numby.io/)
 
-**Your existing agent, in your phone’s messages.** Numby is an open-source phone gateway that connects your verified phone to your AI agent through Photon’s shared iMessage numbers, with provider-dependent SMS/RCS fallback.
+**Your existing agent, in your phone’s messages.** Text it, share photos and send files from your phone. Your agent keeps its own tools, memory and personality.
 
-Your agent stays in its own runtime, with its existing tools and personality. Numby handles phone verification, message routing and the queue. It does not host an AI model.
+Numby is the open-source gateway between your verified phone and your agent’s runtime. It handles verification, message routing and the queue. It does not host an AI model.
 
-[Website](https://numby.io/) · [Agent setup guide](https://numby.io/agent-guide.txt) · [Conversation skill](https://numby.io/skill.md) · [Join Discord](https://discord.gg/sxjhCPdEG6)
+[**Get started →**](https://numby.io/) · [Runtime support](docs/RUNTIMES.md) · [Agent setup guide](https://numby.io/agent-guide.txt) · [Self-hosting](docs/OPERATIONS.md) · [Discord](https://discord.gg/sxjhCPdEG6)
+
+Uses Photon’s shared iMessage numbers, with provider-dependent SMS/RCS fallback. A compatible listener and wake integration are required. See [current limits](#current-limits).
 
 ## Get started
 

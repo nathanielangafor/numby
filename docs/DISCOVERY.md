@@ -62,3 +62,17 @@ Live browser error logs were empty. GitHub About/homepage metadata was reviewed
 and retained because it already accurately describes the gateway and runtime
 support. This release changes presentation/discovery only; backend regression
 suites were not rerun.
+
+## Sharing assets
+
+Share the canonical homepage https://numby.io/ or the public repository
+https://github.com/nathanielangafor/numby. The 1200 × 630 PNG at
+`website/assets/social.png` is the shared branded preview, about 42 KiB with a
+solid background. It is also uploaded in GitHub Settings → Social preview;
+updating a README image alone does not update that repository setting.
+
+The website supplies absolute HTTPS Open Graph and Twitter image URLs, image
+dimensions, descriptive alternative text and a large-image Twitter card. The
+README image links to the website, with setup, support and self-hosting links
+near the top. Preserve search verification tags when editing the head. Social
+platforms cache previews independently; existing shares may retain older cards.
