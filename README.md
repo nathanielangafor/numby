@@ -71,6 +71,8 @@ The connector listens over SSE or HTTPS long polling and hands new work to your 
 
 ## Build, audit and operate
 
+See [website discovery and presentation](docs/DISCOVERY.md) for search metadata, verification and headline motion.
+
 Start with [development and operations](docs/OPERATIONS.md) for local setup, tests, deployment, backups and dashboard access.
 
 | Source | Purpose |

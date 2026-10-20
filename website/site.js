@@ -99,24 +99,28 @@
     slot.classList.remove('is-typing');
     show('your agent', '#006ff1');
   }
+  // Any interaction permanently finishes the decorative intro without blocking the action.
+  for (const event of ['keydown', 'pointerdown', 'touchstart', 'wheel']) {
+    window.addEventListener(event, stop, {once:true, passive:true});
+  }
   reduced.addEventListener('change', stop);
   document.addEventListener('visibilitychange', () => { if (document.hidden) stop(); });
   window.addEventListener('resize', measure);
   document.fonts.ready.then(() => {
     if (stopped || reduced.matches || document.hidden) { stop(); return; }
-    // One decorative pass under five seconds, then no moving/blinking headline.
-    // Faster erasing and a dwell at each complete name follow typewriter conventions.
+    // One deliberate pass, with time to read every complete name.
+    // Interaction and reduced motion finish it immediately; it never restarts.
     const steps = [{at:0, ...names[0]}];
     let at = 0;
     for (let i = 0; i < names.length; i++) {
       const name = names[i];
-      at += 650;
+      at += 1800;
       for (let n = name.text.length - 1; n >= 0; n--) {
-        at += 25; steps.push({at, text:name.text.slice(0,n), color:name.color});
+        at += 45; steps.push({at, text:name.text.slice(0,n), color:name.color});
       }
       const next = names[i + 1] || {text:'your agent', color:'#006ff1'};
       for (let n = 1; n <= next.text.length; n++) {
-        at += 45; steps.push({at, text:next.text.slice(0,n), color:next.color});
+        at += 100; steps.push({at, text:next.text.slice(0,n), color:next.color});
       }
     }
     show(names[0].text, names[0].color);
@@ -125,7 +129,7 @@
     let current = 0;
     function tick(now) {
       const elapsed = now - start;
-      if (elapsed >= Math.min(at + 80, 4700)) { stop(); return; }
+      if (elapsed >= at + 100) { stop(); return; }
       let next = current;
       while (next + 1 < steps.length && steps[next + 1].at <= elapsed) next++;
       if (next !== current) { current = next; show(steps[current].text, steps[current].color); }
