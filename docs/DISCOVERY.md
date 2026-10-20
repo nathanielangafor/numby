@@ -18,10 +18,10 @@ ownership verification do not prove indexing or guarantee rankings.
 
 ## Headline motion
 
-One decorative pass visits Muse, Grok Bot, Hermes and dot, then settles on
-“your agent”. Each complete name dwells for 1,800 ms; typing takes 100 ms per
-character and deletion takes 45 ms per character. Total duration is 10,945 ms
-plus font readiness, with no repeat. Natural text widths keep the cursor beside
+The decorative animation cycles through Muse, Grok Bot, Hermes, dot and
+“your agent”, then types Muse again. Each complete name dwells for 1,800 ms; typing takes 100 ms per
+character and deletion takes 45 ms per character. Each cycle lasts 13,495 ms
+after font readiness. Natural text widths keep the cursor beside
 the current text. The accessible heading is always “Give your agent a Phone
 Number”, without live announcements.
 

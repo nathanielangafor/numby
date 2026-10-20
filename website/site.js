@@ -85,6 +85,7 @@
     {text:'Grok Bot', color:'#171717'},
     {text:'Hermes', color:'#0000c2'},
     {text:'dot', color:'#a16a0b'},
+    {text:'your agent', color:'#006ff1'},
   ];
   let frame, stopped = false;
   const measure = () => { slot.style.width = `${content.getBoundingClientRect().width}px`; };
@@ -99,7 +100,7 @@
     slot.classList.remove('is-typing');
     show('your agent', '#006ff1');
   }
-  // Any interaction permanently finishes the decorative intro without blocking the action.
+  // Any interaction permanently finishes the decorative animation without blocking the action.
   for (const event of ['keydown', 'pointerdown', 'touchstart', 'wheel']) {
     window.addEventListener(event, stop, {once:true, passive:true});
   }
@@ -108,8 +109,7 @@
   window.addEventListener('resize', measure);
   document.fonts.ready.then(() => {
     if (stopped || reduced.matches || document.hidden) { stop(); return; }
-    // One deliberate pass, with time to read every complete name.
-    // Interaction and reduced motion finish it immediately; it never restarts.
+    // Repeat at a readable pace; interaction and reduced motion stop the animation.
     const steps = [{at:0, ...names[0]}];
     let at = 0;
     for (let i = 0; i < names.length; i++) {
@@ -118,7 +118,7 @@
       for (let n = name.text.length - 1; n >= 0; n--) {
         at += 45; steps.push({at, text:name.text.slice(0,n), color:name.color});
       }
-      const next = names[i + 1] || {text:'your agent', color:'#006ff1'};
+      const next = names[(i + 1) % names.length];
       for (let n = 1; n <= next.text.length; n++) {
         at += 100; steps.push({at, text:next.text.slice(0,n), color:next.color});
       }
@@ -128,9 +128,8 @@
     const start = performance.now();
     let current = 0;
     function tick(now) {
-      const elapsed = now - start;
-      if (elapsed >= at + 100) { stop(); return; }
-      let next = current;
+      const elapsed = (now - start) % at;
+      let next = elapsed < steps[current].at ? 0 : current;
       while (next + 1 < steps.length && steps[next + 1].at <= elapsed) next++;
       if (next !== current) { current = next; show(steps[current].text, steps[current].color); }
       frame = requestAnimationFrame(tick);
