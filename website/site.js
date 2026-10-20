@@ -73,3 +73,56 @@
     }
   });
 })();
+
+(() => {
+  const flap = document.querySelector('.agent-flap');
+  if (!flap) return;
+  const agents = [
+    {name:'Muse', color:'#006ff1'},
+    {name:'Grok Bot', color:'#171717'},
+    {name:'Hermes', color:'#0000c2'},
+    {name:'dot', color:'#a16a0b'},
+  ];
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)');
+  let index = 0, timer, finish, paused = false;
+  const toggle = document.querySelector('.motion-toggle');
+  function rest() {
+    clearTimeout(finish);
+    flap.querySelectorAll(':scope > :not(.flap-width)').forEach(el => el.remove());
+    const face = document.createElement('span');
+    face.className = 'flap-face flap-rest';
+    face.textContent = reduced.matches ? 'your agent' : agents[index].name;
+    face.style.color = reduced.matches ? '#171717' : agents[index].color;
+    flap.append(face);
+  }
+  function half(agent, position, motion='') {
+    const face = document.createElement('span');
+    face.className = `flap-half flap-${position} ${motion}`;
+    face.style.color = agent.color;
+    const label = document.createElement('span');
+    label.textContent = agent.name;
+    face.append(label); flap.append(face);
+  }
+  function schedule() {
+    clearTimeout(timer); rest();
+    if (toggle) toggle.hidden = reduced.matches;
+    if (reduced.matches || document.hidden || paused) return;
+    timer = setTimeout(() => {
+      const old = agents[index]; index = (index + 1) % agents.length;
+      flap.querySelector('.flap-rest').remove();
+      half(agents[index], 'top'); half(old, 'bottom');
+      half(old, 'top', 'flap-out'); half(agents[index], 'bottom', 'flap-in');
+      finish = setTimeout(schedule, 650);
+    }, 3000);
+  }
+  toggle?.addEventListener('click', () => {
+    paused = !paused;
+    toggle.textContent = paused ? 'Resume animation' : 'Pause animation';
+    toggle.setAttribute('aria-label', toggle.textContent);
+    toggle.setAttribute('aria-pressed', String(paused));
+    schedule();
+  });
+  reduced.addEventListener('change', schedule);
+  document.addEventListener('visibilitychange', schedule);
+  schedule();
+})();

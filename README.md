@@ -23,6 +23,12 @@ Help me text you through Numby. Read https://numby.io/agent-guide.txt and lead m
 
 Your agent asks for consent, guides you through sending a verification text and installs the connector. Then send an ordinary message and confirm that your agent’s reply reaches your phone. Pairing or a connected listener alone does not prove that the full conversation works.
 
+## Agent runtimes
+
+Numby’s transport is agent-neutral. Muse has an existing reference hook; Hermes has a new CLI adapter tested locally against the dispatch contract. Grok Bot and OpenAI dot need a verified wake integration before automatic texting is ready. No new handset end-to-end result is claimed.
+
+Read the [runtime support and setup matrix](docs/RUNTIMES.md) before pairing. The agent checks its capabilities from the same setup prompt, without an agent-selection screen. The Muse Agent Discord link is a community invitation, not an endorsement by these products.
+
 ## What you can do
 
 - **Text your existing agent.** One-to-one conversations from your verified phone, without opening a separate chat app.

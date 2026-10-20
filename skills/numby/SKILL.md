@@ -13,6 +13,10 @@ Provider and recipient support vary. A command existing is not proof that it wor
 on this connection. Check its outcome before claiming success; an uncertain send
 must not be automatically replayed. Use ordinary text as the default.
 
+## Runtime boundary
+
+See https://github.com/nathanielangafor/numby/blob/main/docs/RUNTIMES.md before installation. A model name or rotating website name does not establish runtime compatibility. Use the owner’s explicitly selected agent/session; never resume an unrelated latest session. Muse’s HATCH hook is specific to Muse. Hermes uses the documented CLI adapter. Grok Bot and dot must establish a real authorized wake path before pairing. Do not disable approval prompts or replace the personal agent with a generic model call.
+
 ## Choose the natural response
 
 - Use `send` for ordinary back-and-forth. Use `reply` when explicitly answering one message, clarifying an older question, or avoiding ambiguity. Do not thread every casual response automatically.

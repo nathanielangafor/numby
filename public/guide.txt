@@ -27,6 +27,19 @@ Respect your runtime's human-confirmation boundaries. If it requires the owner
 to approve an integration directly, ask them; do not work around that boundary.
 Numby routes messages to an existing agent, not an AI model of its own.
 
+RUNTIME PREFLIGHT (BEFORE PAIRING)
+Read https://github.com/nathanielangafor/numby/blob/main/docs/RUNTIMES.md.
+Identify your actual runtime and verify a persistent listener AND a documented
+wake path to this agent before collecting a phone. Muse has a reference hook;
+Hermes has a CLI adapter with local contract tests, not a handset E2E guarantee.
+Grok Bot and OpenAI dot are under assessment: no public arbitrary Numby wake
+API was established in the reviewed documentation. If your installed tools do
+not provide one, explain that automatic Numby texting is not ready and stop
+before phone collection. Do not substitute a model API or invent a hook.
+Hermes adapter source (inspect before installing):
+https://github.com/nathanielangafor/numby/blob/main/connector/numby-hermes.py
+Use the runtime instructions for explicit session isolation and approvals.
+
 BEFORE COLLECTING A PHONE
 Explain briefly: "Numby connects a shared iMessage number to your phone, so you
 can text me from that verified phone. It isn't an exclusive number; this version
@@ -103,7 +116,7 @@ In the commands below STATE means its absolute path. Never publish its contents.
    running service, not merely that a process exists.
    Configure restart/backoff and survival across agent restarts. A short-lived
    terminal process alone is not a completed installation.
-7. Register the worker/hook below, then:
+7. Register the appropriate runtime adapter from RUNTIMES.md, then:
    python3 numby-bridge.py status --dir STATE
    assigned is the number the owner saves as your contact. shared is true.
    agentConnected means an SSE listener or long poll is attached, or polling
