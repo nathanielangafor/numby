@@ -75,54 +75,62 @@
 })();
 
 (() => {
-  const flap = document.querySelector('.agent-flap');
-  if (!flap) return;
-  const agents = [
-    {name:'Muse', color:'#006ff1'},
-    {name:'Grok Bot', color:'#171717'},
-    {name:'Hermes', color:'#0000c2'},
-    {name:'dot', color:'#a16a0b'},
-  ];
+  const slot = document.querySelector('.agent-type');
+  if (!slot) return;
+  const content = slot.querySelector('.type-content');
+  const text = slot.querySelector('.type-text');
   const reduced = matchMedia('(prefers-reduced-motion: reduce)');
-  let index = 0, timer, finish, paused = false;
-  const toggle = document.querySelector('.motion-toggle');
-  function rest() {
-    clearTimeout(finish);
-    flap.querySelectorAll(':scope > :not(.flap-width)').forEach(el => el.remove());
-    const face = document.createElement('span');
-    face.className = 'flap-face flap-rest';
-    face.textContent = reduced.matches ? 'your agent' : agents[index].name;
-    face.style.color = reduced.matches ? '#171717' : agents[index].color;
-    flap.append(face);
+  const names = [
+    {text:'Muse', color:'#006ff1'},
+    {text:'Grok Bot', color:'#171717'},
+    {text:'Hermes', color:'#0000c2'},
+    {text:'dot', color:'#a16a0b'},
+  ];
+  let frame, stopped = false;
+  const measure = () => { slot.style.width = `${content.getBoundingClientRect().width}px`; };
+  function show(value, color) {
+    text.textContent = value;
+    slot.style.color = color;
+    measure();
   }
-  function half(agent, position, motion='') {
-    const face = document.createElement('span');
-    face.className = `flap-half flap-${position} ${motion}`;
-    face.style.color = agent.color;
-    const label = document.createElement('span');
-    label.textContent = agent.name;
-    face.append(label); flap.append(face);
+  function stop() {
+    stopped = true;
+    cancelAnimationFrame(frame);
+    slot.classList.remove('is-typing');
+    show('your agent', '#006ff1');
   }
-  function schedule() {
-    clearTimeout(timer); rest();
-    if (toggle) toggle.hidden = reduced.matches;
-    if (reduced.matches || document.hidden || paused) return;
-    timer = setTimeout(() => {
-      const old = agents[index]; index = (index + 1) % agents.length;
-      flap.querySelector('.flap-rest').remove();
-      half(agents[index], 'top'); half(old, 'bottom');
-      half(old, 'top', 'flap-out'); half(agents[index], 'bottom', 'flap-in');
-      finish = setTimeout(schedule, 650);
-    }, 3000);
-  }
-  toggle?.addEventListener('click', () => {
-    paused = !paused;
-    toggle.textContent = paused ? 'Resume animation' : 'Pause animation';
-    toggle.setAttribute('aria-label', toggle.textContent);
-    toggle.setAttribute('aria-pressed', String(paused));
-    schedule();
+  reduced.addEventListener('change', stop);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) stop(); });
+  window.addEventListener('resize', measure);
+  document.fonts.ready.then(() => {
+    if (stopped || reduced.matches || document.hidden) { stop(); return; }
+    // One decorative pass under five seconds, then no moving/blinking headline.
+    // Faster erasing and a dwell at each complete name follow typewriter conventions.
+    const steps = [{at:0, ...names[0]}];
+    let at = 0;
+    for (let i = 0; i < names.length; i++) {
+      const name = names[i];
+      at += 650;
+      for (let n = name.text.length - 1; n >= 0; n--) {
+        at += 25; steps.push({at, text:name.text.slice(0,n), color:name.color});
+      }
+      const next = names[i + 1] || {text:'your agent', color:'#006ff1'};
+      for (let n = 1; n <= next.text.length; n++) {
+        at += 45; steps.push({at, text:next.text.slice(0,n), color:next.color});
+      }
+    }
+    show(names[0].text, names[0].color);
+    slot.classList.add('is-typing');
+    const start = performance.now();
+    let current = 0;
+    function tick(now) {
+      const elapsed = now - start;
+      if (elapsed >= Math.min(at + 80, 4700)) { stop(); return; }
+      let next = current;
+      while (next + 1 < steps.length && steps[next + 1].at <= elapsed) next++;
+      if (next !== current) { current = next; show(steps[current].text, steps[current].color); }
+      frame = requestAnimationFrame(tick);
+    }
+    frame = requestAnimationFrame(tick);
   });
-  reduced.addEventListener('change', schedule);
-  document.addEventListener('visibilitychange', schedule);
-  schedule();
 })();

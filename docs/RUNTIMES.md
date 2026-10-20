@@ -1,6 +1,6 @@
 # Agent runtimes
 
-Numby connects to a running agent, not directly to a model name. The website’s rotating names identify the products covered here; they are not a claim that every runtime has a working unattended integration.
+Numby connects to a running agent, not directly to a model name. The website’s animated names identify the products covered here; they are not a claim that every runtime has a working unattended integration.
 
 ## Current status
 
