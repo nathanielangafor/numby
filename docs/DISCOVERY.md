@@ -36,3 +36,29 @@ not a claim of a full WCAG conformance audit.
 - https://developers.google.com/search/docs/crawling-indexing/ask-google-to-recrawl
 - https://www.bing.com/webmasters/help/add-and-verify-site-12184f8b
 - https://www.w3.org/WAI/WCAG22/Understanding/pause-stop-hide.html
+
+## Search-console verification, October 19, 2026 (Pacific)
+
+- Google and Bing ownership verified through the homepage tags, using the
+  existing operator accounts. No DNS records were changed.
+- Google processed `/sitemap.xml` successfully and discovered one page.
+  URL Inspection reports the homepage is already indexed and served over HTTPS.
+  A request to recrawl the new release failed twice with Search Console's
+  submission error; the first attempt also reported inability to reach its
+  reCAPTCHA service. No successful fresh recrawl request is claimed.
+- Bing accepted the sitemap (processing) and confirmed the homepage URL was
+  submitted for indexing. Its index report still says discovered but not crawled
+  with a DNS fetch error. Its separate live inspection returned an inspection
+  error. Indexing is not confirmed.
+- Independent checks resolve the domain to `104.248.216.34` through the local,
+  Google and Cloudflare resolvers. HTTPS returns the exact published homepage,
+  CSS, JavaScript, robots and sitemap bytes. Revisit Bing's crawl report after
+  processing; do not change healthy DNS solely from this report.
+
+Release `6c7ba05` was checked at 320, 390 and 1440 px: no horizontal overflow,
+zero vertical phone movement across the sequence, and the cursor remained next
+to the text. Reduced motion, keyboard interruption and the setup dialog passed.
+Live browser error logs were empty. GitHub About/homepage metadata was reviewed
+and retained because it already accurately describes the gateway and runtime
+support. This release changes presentation/discovery only; backend regression
+suites were not rerun.
